@@ -3,6 +3,12 @@ name: 商品ページ構造の調査
 # パーサを書く / 直すときに、実際の商品ページがどういう HTML なのかを
 # ランナー上で実測するための手動ワークフロー。定期実行はしない。
 on:
+  # 調査用コードを触ったときは自動で走らせて、結果をログで確認する。
+  push:
+    paths:
+      - .github/workflows/diagnose.yml
+      - montbell_restock/diagnose.py
+      - montbell_restock/fetch.py
   workflow_dispatch:
     inputs:
       url:
@@ -28,17 +34,29 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: 調査を実行
+        # push で走らせたときは inputs が空になるので既定値に落とす。
+        env:
+          URL: ${{ inputs.url || 'https://webshop.montbell.jp/goods/disp.php?product_id=2301257' }}
+          NEEDLES: ${{ inputs.needles || 'LGY,XL' }}
         run: |
-          needle_args=""
-          IFS=',' read -ra parts <<< "${{ inputs.needles }}"
+          needle_args=()
+          IFS=',' read -ra parts <<< "${NEEDLES}"
           for part in "${parts[@]}"; do
-            needle_args+=" --needle ${part}"
+            needle_args+=(--needle "${part}")
           done
 
           python -m montbell_restock.diagnose \
-            "${{ inputs.url }}" \
+            "${URL}" \
             --save-html artifacts/page.html \
-            ${needle_args}
+            "${needle_args[@]}"
+
+      - name: スマートフォン版も確認
+        continue-on-error: true
+        run: |
+          python -m montbell_restock.diagnose \
+            "https://webshop.montbell.jp/sp/goods/disp.php?product_id=2301257" \
+            --save-html artifacts/page-sp.html \
+            --needle LGY --needle XL
 
       - name: HTML を成果物として保存
         if: always()
