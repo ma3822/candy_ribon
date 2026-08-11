@@ -22,18 +22,22 @@ SIZE_TOKENS = frozenset(
     }
 )
 
-#: 在庫ありと読むべき表記。
-IN_STOCK_MARKERS = (
+#: 在庫ありと読むべき語。含まれていれば当たりとみなす。
+IN_STOCK_WORDS = (
     "在庫あり", "残りわずか", "お取り寄せ", "カートに入れる", "カートへ",
     "ご注文", "購入", "○", "◯", "△", "▲",
 )
 
-#: 在庫なしと読むべき表記。
-OUT_OF_STOCK_MARKERS = (
+#: 在庫なしと読むべき語。含まれていれば当たりとみなす。
+OUT_OF_STOCK_WORDS = (
     "在庫なし", "品切", "売り切れ", "在庫切れ", "完売", "販売終了",
     "入荷未定", "入荷予定", "予定なし", "取扱終了", "sold out", "soldout",
-    "×", "✕", "☓", "－", "ー", "‐", "-", "—",
+    "×", "✕", "☓",
 )
+
+#: セル全体がこれだけなら在庫なし。長音符「ー」は「カート」「グレー」のように
+#: 語の一部として現れるので、部分一致で見てはいけない。
+OUT_OF_STOCK_SYMBOLS = frozenset({"-", "－", "ー", "‐", "—", "–", "―", "‑"})
 
 
 @dataclass(frozen=True)
@@ -61,15 +65,17 @@ def _looks_like_size(text: str) -> bool:
 def read_stock_marker(text: str) -> tuple[bool | None, str]:
     """セルの表記から在庫の有無を読む。(判定, 根拠になった表記) を返す。"""
     squeezed = re.sub(r"\s+", " ", (text or "")).strip()
-    lowered = squeezed.lower()
+    if squeezed in OUT_OF_STOCK_SYMBOLS:
+        return False, squeezed
 
+    lowered = squeezed.lower()
     # 「在庫なし」を先に見る。「在庫あり」と部分一致で衝突しないようにするため。
-    for marker in OUT_OF_STOCK_MARKERS:
+    for marker in OUT_OF_STOCK_WORDS:
         if marker.lower() in lowered:
-            return False, squeezed or marker
-    for marker in IN_STOCK_MARKERS:
+            return False, squeezed
+    for marker in IN_STOCK_WORDS:
         if marker.lower() in lowered:
-            return True, squeezed or marker
+            return True, squeezed
     return None, squeezed
 
 
@@ -124,7 +130,12 @@ def _variants_from_table(table: Tag) -> list[Variant]:
         for position, size in sizes:
             if position >= len(cells):
                 continue
-            in_stock, marker = read_stock_marker(_cell_signal(cells[position]))
+            cell = cells[position]
+            # まずセルの文字だけで見る。「－」だけのセルを他の属性と混ぜて
+            # 判定できなくならないようにするため。
+            in_stock, marker = read_stock_marker(cell.get_text(" ", strip=True))
+            if in_stock is None:
+                in_stock, marker = read_stock_marker(_cell_signal(cell))
             variants.append(
                 Variant(color=color, size=size, in_stock=in_stock, marker=marker)
             )

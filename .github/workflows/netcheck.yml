@@ -1,11 +1,17 @@
 name: 接続性の切り分け
 
-# montbell へ到達できない原因（DNS / 経路 / IP による遮断）を切り分けるための
-# 一時的な調査ワークフロー。原因が分かったら消してよい。
+# GitHub のホストランナーから montbell へ到達できないことを確かめるための調査。
+#
+# 2026-08-11 の実行結果:
+#   ランナーの出口 IP  172.184.213.225（Microsoft / 米国カリフォルニア）
+#   DNS               webshop / www / montbell.jp いずれも 180.147.235.227 に解決できる
+#   TCP 443 と 80     4 通りすべて接続タイムアウト（拒否ではなく無応答）
+#   HTTP              montbell.com も含めて全滅
+#
+# DNS は引けるのに TCP が無応答なので、経路上ではなく相手側が国外・
+# データセンターの IP を落としている。定期チェックをホストランナーに
+# 載せられないのはこれが理由。
 on:
-  push:
-    paths:
-      - .github/workflows/netcheck.yml
   workflow_dispatch:
 
 jobs:
