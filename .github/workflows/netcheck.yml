@@ -1,0 +1,51 @@
+name: 接続性の切り分け
+
+# montbell へ到達できない原因（DNS / 経路 / IP による遮断）を切り分けるための
+# 一時的な調査ワークフロー。原因が分かったら消してよい。
+on:
+  push:
+    paths:
+      - .github/workflows/netcheck.yml
+  workflow_dispatch:
+
+jobs:
+  netcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: ランナー自身の出口 IP と国
+        continue-on-error: true
+        run: curl -sS --max-time 20 https://ipinfo.io/json || echo "取得できず"
+
+      - name: DNS 解決
+        continue-on-error: true
+        run: |
+          for host in webshop.montbell.jp www.montbell.jp montbell.jp; do
+            echo "--- ${host}"
+            getent ahosts "${host}" || echo "解決できず"
+          done
+
+      - name: TCP 443 への到達性
+        continue-on-error: true
+        run: |
+          for host in webshop.montbell.jp www.montbell.jp; do
+            for port in 443 80; do
+              echo "--- ${host}:${port}"
+              timeout 12 bash -c "cat < /dev/null > /dev/tcp/${host}/${port}" \
+                && echo "接続できた" || echo "接続できず"
+            done
+          done
+
+      - name: HTTP 応答
+        continue-on-error: true
+        run: |
+          for url in \
+            "https://webshop.montbell.jp/goods/disp.php?product_id=2301257" \
+            "https://webshop.montbell.jp/" \
+            "https://www.montbell.jp/" \
+            "https://www.montbell.com/" ; do
+            echo "=== ${url}"
+            curl -sS -o /dev/null --max-time 25 \
+              -w "code=%{http_code} ip=%{remote_ip} time=%{time_total}s\n" \
+              "${url}" || echo "失敗"
+          done

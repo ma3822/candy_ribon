@@ -20,11 +20,17 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def today_iso() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
 @dataclass
 class ItemState:
     status: str = UNKNOWN
     detail: str = ""
-    checked_at: str = ""
+    #: 最終チェック日。30 分おきに走らせるので、時刻まで持つと状態ファイルが
+    #: 毎回書き換わってコミットが増えすぎる。日付までに丸めておく。
+    checked_on: str = ""
     changed_at: str = ""
     #: 直近の「在庫あり」について通知済みかどうか。在庫なしに戻ると空に戻す。
     notified_at: str = ""
@@ -62,7 +68,7 @@ class Store:
         updated = ItemState(
             status=status,
             detail=detail,
-            checked_at=now_iso(),
+            checked_on=today_iso(),
             changed_at=now_iso() if changed else (previous.changed_at or now_iso()),
             notified_at="" if status != IN_STOCK else previous.notified_at,
         )
@@ -75,7 +81,7 @@ class Store:
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "updated_at": now_iso(),
+            "updated_on": today_iso(),
             "items": {
                 key: asdict(value) for key, value in sorted(self.items.items())
             },
